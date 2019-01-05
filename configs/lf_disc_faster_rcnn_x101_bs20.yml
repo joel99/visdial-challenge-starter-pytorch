@@ -5,8 +5,6 @@ dataset:
   visdial_params_json: 'data/visdial_params.json'
   img_norm: 1
   concat_history: True
-
-
 # Model related arguments
 model:
   encoder: 'lf'

@@ -89,7 +89,7 @@ val_dataloader = DataLoader(
     val_dataset, batch_size=config["solver"]["batch_size"], num_workers=args.cpu_workers
 )
 
-if args.use_gt and "test" in dataset.split:
+if args.use_gt and "test" in val_dataset.split:
     print("Warning: No ground truth for test split, changing use_gt to False.")
     args.use_gt = False
 
