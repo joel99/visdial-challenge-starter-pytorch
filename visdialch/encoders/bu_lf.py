@@ -59,40 +59,41 @@ class BottomUpLateFusionEncoder(nn.Module):
         # Create attention for each image feature
         
         # repeat image feature vectors to be provided for every round
-        img = img.view(batch_size, 1, self.config["img_feature_size"])
-        img = img.repeat(1, num_rounds, 1)
-        img = img.view(batch_size * num_rounds, self.config["img_feature_size"])
+        img = img.view(batch_size, 1, num_bu_feat self.config["img_feature_size"])
+        img = img.repeat(1, num_rounds, 1, 1)
+        img = img.view(batch_size * num_rounds, num_bu_feat, self.config["img_feature_size"])
 
         # embed questions
         ques = ques.view(batch_size * num_rounds, max_sequence_length)
         ques_embed = self.word_embed(ques)
         ques_embed = self.ques_rnn(ques_embed, batch["ques_len"])
-        # ques_embed = ques_embed.view(batch_size * num_rounds, 1, -1)
-        # ques_embed = ques_embed.repeat()
+        stacked_ques = ques_embed.unsqueeze(1).repeat(1, num_bu_feat, 1)
 
         # embed history
         hist = hist.view(batch_size * num_rounds, max_sequence_length * 20)
         hist_embed = self.word_embed(hist)
         hist_embed = self.hist_rnn(hist_embed, batch["hist_len"])
+        stacked_hist = hist_embed.unsqueeze(1).repeat(1, num_bu_feat, 1)
 
-        fused_vector = torch.cat((img, ques_embed, hist_embed), 1)
-        fused_vector = self.dropout(fused_vector)
+        fused_context = torch.cat((img, stacked_ques, stacked_hist), 2)
+        fused_context = self.dropout(fused_context)
 
-        # Convert fused_vector to attention
+        # TODO: confirm it's even possible to run Linear on 3d shapes
+        # TODO: verify reason for dim=None on weight_norm
+        # Convert fused_context to attention
         att_hidden_size = 512
         lstm_size = self.config["lstm_hidden_size"]
         # ReLU for nonlinearity, as per modified VQA implementation
-        self.att_fc = nn.Sequential(nn.Linear(fused_vector.shape[1], att_hidden_size), nn.ReLU())
-        self.att_weights = weight_norm(nn.Linear(att_hidden_size, 1), dim=None) # Understand this one
-
-        att_vector = self.att_fc(fused_vector)
+        self.att_fc = nn.Sequential(weight_norm(nn.Linear(fused_context.shape[2], att_hidden_size), dim=None), nn.ReLU())
+        self.att_weights = nn.Linear(att_hidden_size, 1) # Don't include weight normalization, what's the point
+        att_vector = self.att_fc(fused_context)
         att_logits = self.att_weights(att_vector)
         att_weights = nn.functional.softmax(att_logits, 1)
         att_img = (att_weights * img).sum(1)
 
         # Match question and attended image dimensions with FC
-        ques_net = nn.Sequential(nn.Linear(lstm_size, lstm_size), nn.ReLU())
-        img_net = nn.Sequential(nn.Linear(self.config["img_feature_size"], lstm_size), nn.ReLU())
+        ques_net = nn.Sequential(weight_norm(nn.Linear(lstm_size, lstm_size), dim=None), nn.ReLU())
+        img_net = nn.Sequential(weight_norm(nn.Linear(self.config["img_feature_size"], lstm_size), dim=None), nn.ReLU())
 
         ques_repr = ques_net(ques_embed)
         img_repr = img_net(att_img)
