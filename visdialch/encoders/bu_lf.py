@@ -39,17 +39,17 @@ class BottomUpLateFusionEncoder(nn.Module):
 
         # Ignoring weight_norm for now, which changes .weights key to .weights_g, .weights_v
         # Attention
-        self.att_fc = nn.Sequential(weight_norm(nn.Linear(lstm_size * 2 + self.config["img_feature_size"], att_hidden_size), dim=None), nn.ReLU())
-        self.att_weights = weight_norm(nn.Linear(att_hidden_size, 1))
-        # self.att_fc = nn.Sequential(nn.Linear(lstm_size * 2 + self.config["img_feature_size"], att_hidden_size), nn.ReLU())
-        # self.att_weights = nn.Linear(att_hidden_size, 1)
+        # self.att_fc = nn.Sequential(weight_norm(nn.Linear(lstm_size * 2 + self.config["img_feature_size"], att_hidden_size), dim=None), nn.ReLU())
+        # self.att_weights = weight_norm(nn.Linear(att_hidden_size, 1))
+        self.att_fc = nn.Sequential(nn.Linear(lstm_size * 2 + self.config["img_feature_size"], att_hidden_size), nn.ReLU())
+        self.att_weights = nn.Linear(att_hidden_size, 1)
         
 
         # Embedders
-        self.ques_net = nn.Sequential(weight_norm(nn.Linear(lstm_size, lstm_size), dim=None), nn.ReLU())
-        self.img_net = nn.Sequential(weight_norm(nn.Linear(self.config["img_feature_size"], lstm_size), dim=None), nn.ReLU())
-        # self.ques_net = nn.Sequential(nn.Linear(lstm_size, lstm_size), nn.ReLU())
-        # self.img_net = nn.Sequential(nn.Linear(self.config["img_feature_size"], lstm_size), nn.ReLU())
+        # self.ques_net = nn.Sequential(weight_norm(nn.Linear(lstm_size, lstm_size), dim=None), nn.ReLU())
+        # self.img_net = nn.Sequential(weight_norm(nn.Linear(self.config["img_feature_size"], lstm_size), dim=None), nn.ReLU())
+        self.ques_net = nn.Sequential(nn.Linear(lstm_size, lstm_size), nn.ReLU())
+        self.img_net = nn.Sequential(nn.Linear(self.config["img_feature_size"], lstm_size), nn.ReLU())
 
         # Now the fusion for embeddings (NOT for context)
         self.fusion = nn.Linear(lstm_size, lstm_size)
