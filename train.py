@@ -214,6 +214,7 @@ for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
                 batch[key] = batch[key].to(device)
             with torch.no_grad():
                 output = model(batch)
+                print(output.shape)
             ranks = scores_to_ranks(output)
             gt_ranks = get_gt_ranks(ranks, batch["ans_ind"])
             all_ranks.append(gt_ranks)

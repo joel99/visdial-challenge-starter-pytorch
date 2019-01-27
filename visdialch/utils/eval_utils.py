@@ -43,6 +43,8 @@ def scores_to_ranks(scores):
 
     # convert from ranked_idx to ranks
     ranks = ranked_idx.clone().fill_(0)
+    print(f"ranked_idx: {ranked_idx.shape}")
+    print(f"ranks: {ranks.shape}")
     for i in range(ranked_idx.size(0)):
         for j in range(100):
             ranks[i][ranked_idx[i][j]] = j
