@@ -59,7 +59,7 @@ class BottomUpLateFusionEncoder(nn.Module):
         # Create attention for each image feature
         
         # repeat image feature vectors to be provided for every round
-        img = img.view(batch_size, 1, num_bu_feat self.config["img_feature_size"])
+        img = img.view(batch_size, 1, num_bu_feat, self.config["img_feature_size"])
         img = img.repeat(1, num_rounds, 1, 1)
         img = img.view(batch_size * num_rounds, num_bu_feat, self.config["img_feature_size"])
 
