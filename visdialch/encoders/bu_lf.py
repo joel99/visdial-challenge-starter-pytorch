@@ -106,6 +106,6 @@ class BottomUpLateFusionEncoder(nn.Module):
         img_repr = self.img_net(att_img)
 
         att_question = img_repr * ques_repr
-        bu_embedding = nn.functional.tanh(self.fusion(att_question))
+        bu_embedding = torch.tanh(self.fusion(att_question))
         bu_embedding = bu_embedding.view(batch_size, num_rounds, -1)
         return bu_embedding
