@@ -85,7 +85,7 @@ class BottomUpLateFusionEncoder(nn.Module):
         lstm_size = self.config["lstm_hidden_size"]
         # ReLU for nonlinearity, as per modified VQA implementation
         self.att_fc = nn.Sequential(weight_norm(nn.Linear(fused_context.shape[2], att_hidden_size), dim=None), nn.ReLU())
-        self.att_weights = nn.Linear(att_hidden_size, 1) # Don't include weight normalization, what's the point
+        self.att_weights = weight_norm(nn.Linear(att_hidden_size, 1))
         att_vector = self.att_fc(fused_context)
         att_logits = self.att_weights(att_vector)
         att_weights = nn.functional.softmax(att_logits, 1)
@@ -99,7 +99,7 @@ class BottomUpLateFusionEncoder(nn.Module):
         img_repr = img_net(att_img)
 
         att_question = img_repr * ques_repr
-        embed_fc = nn.Linear(lstm_size, lstm_size)
+        embed_fc = weight_norm(nn.Linear(lstm_size, lstm_size))
         bu_embedding = torch.tanh(embed_fc(att_question))
         bu_embedding = bu_embedding.view(batch_size, num_rounds, -1)
         return bu_embedding
