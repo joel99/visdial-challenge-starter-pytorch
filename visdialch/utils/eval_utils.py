@@ -3,7 +3,7 @@ import torch
 
 def get_gt_ranks(ranks, ans_ind):
     ans_ind = ans_ind.view(-1)
-    gt_ranks = torch.LongTensor(ans_ind.size(0))
+    gt_ranks = torch.LongTensor(ans_ind.size(0)) # Looks like this is shaped [q1r1, q2r1, ..., q1r2,]
     for i in range(ans_ind.size(0)):
         gt_ranks[i] = int(ranks[i, ans_ind[i]])
     return gt_ranks
@@ -43,8 +43,10 @@ def scores_to_ranks(scores):
     # return scores.argsort()[::-1] + 1 # negative strides not supported
     ranks = (-1 * scores).argsort() + 1
     # Flatten trials and rounds
-    return ranks.view(-1, 100)
-
+    return ranks.permute(1, 0, 2).view(-1, 100)
+    # Because batch is the first dimension, if we flatten here, it will list out by trial first (q1r1, q2r1, etc...)
+    # However ans_ind is composed by concatenation of dialog answers, meaning (q1r1, q1r2, etc...)
+    # Thus we need an axis swap
     # sorted_ranks, ranked_idx = scores.sort(1, descending=True)
     # convert from ranked_idx to ranks
     # ranks = ranked_idx.clone().fill_(0)
