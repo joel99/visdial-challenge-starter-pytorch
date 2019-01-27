@@ -43,7 +43,7 @@ def scores_to_ranks(scores):
     # return scores.argsort()[::-1] + 1 # negative strides not supported
     ranks = (-1 * scores).argsort() + 1
     # Flatten trials and rounds
-    return ranks.permute(1, 0, 2).view(-1, 100)
+    return ranks.permute(1, 0, 2).contiguous().view(-1, 100)
     # Because batch is the first dimension, if we flatten here, it will list out by trial first (q1r1, q2r1, etc...)
     # However ans_ind is composed by concatenation of dialog answers, meaning (q1r1, q1r2, etc...)
     # Thus we need an axis swap
