@@ -40,7 +40,8 @@ def process_ranks(ranks):
 def scores_to_ranks(scores):
     # sort in descending order - largest score gets highest rank
     # Shapes: 5x10x100 (trial x round x response)
-    return scores.argsort()[::-1] + 1
+    # return scores.argsort()[::-1] + 1 # negative strides not supported
+    return (-1 * scores).argsort() + 1
     # sorted_ranks, ranked_idx = scores.sort(1, descending=True)
     # convert from ranked_idx to ranks
     # ranks = ranked_idx.clone().fill_(0)
