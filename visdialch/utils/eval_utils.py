@@ -39,12 +39,15 @@ def process_ranks(ranks):
 
 def scores_to_ranks(scores):
     # sort in descending order - largest score gets highest rank
-    sorted_ranks, ranked_idx = scores.sort(1, descending=True)
-
+    # sorted_ranks, ranked_idx = scores.sort(1, descending=True)
+    # Shapes: 5x10x100
+    sorted_ranks, ranked_idx = scores.sort(-1, descending=True) # Sort by last axis, which is ranks
     # convert from ranked_idx to ranks
     ranks = ranked_idx.clone().fill_(0)
     print(f"ranked_idx: {ranked_idx.shape}")
     print(f"ranks: {ranks.shape}")
+    print(f"rank_prev: {ranks[0]}")
+    print(f"rank_idx_prev: {ranked_idx[0]}")
     for i in range(ranked_idx.size(0)):
         print(f"i:{i}")
         for j in range(100):
