@@ -34,9 +34,19 @@ class BottomUpLateFusionEncoder(nn.Module):
         self.hist_rnn = DynamicRNN(self.hist_rnn)
         self.ques_rnn = DynamicRNN(self.ques_rnn)
 
-        # fusion layer
-        fusion_size = config["img_feature_size"] + config["lstm_hidden_size"] * 2
-        self.fusion = nn.Linear(fusion_size, config["lstm_hidden_size"])
+        att_hidden_size = 512
+        lstm_size = self.config["lstm_hidden_size"]
+
+        # Attention
+        self.att_fc = nn.Sequential(weight_norm(nn.Linear(lstm_size * 2 + self.config["img_feature_size"], att_hidden_size), dim=None), nn.ReLU())
+        self.att_weights = weight_norm(nn.Linear(att_hidden_size, 1))
+        
+        # Embedders
+        self.ques_net = nn.Sequential(weight_norm(nn.Linear(lstm_size, lstm_size), dim=None), nn.ReLU())
+        self.img_net = nn.Sequential(weight_norm(nn.Linear(self.config["img_feature_size"], lstm_size), dim=None), nn.ReLU())
+
+        # Now the fusion for embeddings (NOT for context)
+        self.fusion = nn.Linear(lstm_size, lstm_size)
 
         nn.init.kaiming_uniform_(self.fusion.weight)
         nn.init.constant_(self.fusion.bias, 0)
@@ -78,28 +88,18 @@ class BottomUpLateFusionEncoder(nn.Module):
         fused_context = torch.cat((img, stacked_ques, stacked_hist), 2)
         fused_context = self.dropout(fused_context)
 
-        # TODO: confirm it's even possible to run Linear on 3d shapes
-        # TODO: verify reason for dim=None on weight_norm
         # Convert fused_context to attention
-        att_hidden_size = 512
-        lstm_size = self.config["lstm_hidden_size"]
         # ReLU for nonlinearity, as per modified VQA implementation
-        self.att_fc = nn.Sequential(weight_norm(nn.Linear(fused_context.shape[2], att_hidden_size), dim=None), nn.ReLU())
-        self.att_weights = weight_norm(nn.Linear(att_hidden_size, 1))
         att_vector = self.att_fc(fused_context)
         att_logits = self.att_weights(att_vector)
         att_weights = nn.functional.softmax(att_logits, 1)
         att_img = (att_weights * img).sum(1)
 
         # Match question and attended image dimensions with FC
-        ques_net = nn.Sequential(weight_norm(nn.Linear(lstm_size, lstm_size), dim=None), nn.ReLU())
-        img_net = nn.Sequential(weight_norm(nn.Linear(self.config["img_feature_size"], lstm_size), dim=None), nn.ReLU())
-
-        ques_repr = ques_net(ques_embed)
-        img_repr = img_net(att_img)
+        ques_repr = self.ques_net(ques_embed)
+        img_repr = self.img_net(att_img)
 
         att_question = img_repr * ques_repr
-        embed_fc = weight_norm(nn.Linear(lstm_size, lstm_size))
-        bu_embedding = torch.tanh(embed_fc(att_question))
+        bu_embedding = nn.functional.tanh(self.fusion(att_question))
         bu_embedding = bu_embedding.view(batch_size, num_rounds, -1)
         return bu_embedding
