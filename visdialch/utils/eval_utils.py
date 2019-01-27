@@ -36,14 +36,17 @@ def process_ranks(ranks):
     print("\tmeanR: {}".format(torch.mean(ranks)))
     print("\tmeanRR: {}".format(torch.mean(ranks.reciprocal())))
 
-
+# We want to rank the data - i.e. predicted rank of item at proper index
 def scores_to_ranks(scores):
     # sort in descending order - largest score gets highest rank
     # Shapes: 5x10x100 (trial x round x response)
     # return scores.argsort()[::-1] + 1 # negative strides not supported
-    ranks = (-1 * scores).argsort() + 1
+    # https://stackoverflow.com/questions/5284646/rank-items-in-an-array-using-python-numpy
+    order = (-1 * scores).argsort()
+    ranks = order.argsort() + 1
+
     # Flatten trials and rounds
-    return ranks.permute(1, 0, 2).contiguous().view(-1, 100)
+    # return ranks.permute(1, 0, 2).contiguous().view(-1, 100)
     # Because batch is the first dimension, if we flatten here, it will list out by trial first (q1r1, q2r1, etc...)
     # However ans_ind is composed by concatenation of dialog answers, meaning (q1r1, q1r2, etc...)
     # Thus we need an axis swap
