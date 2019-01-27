@@ -18,7 +18,7 @@ import h5py
 # a bit slow, and just splits sentences to list of words, can be doable in VisDialJsonReader
 from nltk.tokenize import word_tokenize
 from tqdm import tqdm
-
+import pickle
 
 class VisDialJsonReader(object):
     """
@@ -32,6 +32,14 @@ class VisDialJsonReader(object):
     """
 
     def __init__(self, visdial_jsonpath: str):
+        path_stem = visdial_jsonpath[:visdial_jsonpath.rfind(".")]
+        cache_path = f"{path_stem}_cache.sav" 
+        try:
+            cache = pickle.load(open(cache_path, 'rb'))
+            has_cache = True
+        except: # No cache exists
+            has_cache = False
+
         with open(visdial_jsonpath, "r") as visdial_file:
             visdial_data = json.load(visdial_file)
             self._split = visdial_data["split"]
@@ -68,18 +76,33 @@ class VisDialJsonReader(object):
 
                 self.dialogs[dialog_for_image["image_id"]] = dialog_for_image["dialog"]
 
-            print(f"[{self._split}] Tokenizing questions...")
-            for i in tqdm(range(len(self.questions))):
-                self.questions[i] = word_tokenize(self.questions[i] + "?")
+            # Attempt to check cache
+            if has_cache:
+                self.questions = cache["questions"]
+                self.answers = cache["answers"]
+                self.captions = cache["captions"]
+                print(f"[{self._split} Loaded tokens from cache]")
+            else:    
+                print(f"[{self._split}] Tokenizing questions...")
+                for i in tqdm(range(len(self.questions))):
+                    self.questions[i] = word_tokenize(self.questions[i] + "?")
 
-            print(f"[{self._split}] Tokenizing answers...")
-            for i in tqdm(range(len(self.answers))):
-                self.answers[i] = word_tokenize(self.answers[i])
+                print(f"[{self._split}] Tokenizing answers...")
+                for i in tqdm(range(len(self.answers))):
+                    self.answers[i] = word_tokenize(self.answers[i])
 
-            print(f"[{self._split}] Tokenizing captions...")
-            for image_id, caption in tqdm(self.captions.items()):
-                self.captions[image_id] = word_tokenize(caption)
-
+                print(f"[{self._split}] Tokenizing captions...")
+                for image_id, caption in tqdm(self.captions.items()):
+                    self.captions[image_id] = word_tokenize(caption)
+            
+        if not has_cache:
+            # Cache all of these @ jsonpath_cache
+            cache = {}
+            cache["questions"] = self.questions
+            cache["answers"] = self.answers
+            cache["captions"] = self.captions
+            pickle.dump(cache, open(cache_path, 'wb'))
+        
     def __len__(self):
         return len(self.dialogs)
 
