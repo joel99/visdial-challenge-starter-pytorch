@@ -44,7 +44,8 @@ def scores_to_ranks(scores):
     # https://stackoverflow.com/questions/5284646/rank-items-in-an-array-using-python-numpy
     order = (-1 * scores).argsort()
     ranks = order.argsort() + 1
-    return ranks.permute(1, 0, 2).contiguous().view(-1, 100) #100 is num answers
+    return ranks.view(-1, 100)
+    # return ranks.permute(1, 0, 2).contiguous().view(-1, 100) #100 is num answers
     # Flatten trials and rounds
     # return ranks.permute(1, 0, 2).contiguous().view(-1, 100)
     # Because batch is the first dimension, if we flatten here, it will list out by trial first (q1r1, q2r1, etc...)
