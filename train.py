@@ -17,6 +17,15 @@ from visdialch.model import EncoderDecoderModel
 from visdialch.utils import process_ranks, scores_to_ranks, get_gt_ranks
 from visdialch.utils.checkpointing import CheckpointManager, load_checkpoint
 
+import logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[
+        logging.FileHandler("out.log"),
+        logging.StreamHandler()
+    ])
+logger = logging.getLogger()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -86,9 +95,9 @@ if isinstance(args.gpu_ids, int): args.gpu_ids = [args.gpu_ids]
 device = torch.device("cuda", args.gpu_ids[0]) if args.gpu_ids[0] >= 0 else torch.device("cpu")
 
 # print config and args
-print(yaml.dump(config, default_flow_style=False))
+logger.info(yaml.dump(config, default_flow_style=False))
 for arg in vars(args):
-    print("{:<20}: {}".format(arg, getattr(args, arg)))
+    logger.info("{:<20}: {}".format(arg, getattr(args, arg)))
 
 
 # ================================================================================================
@@ -143,7 +152,7 @@ else:
     else:
         model.load_state_dict(model_state_dict)
     optimizer.load_state_dict(optimizer_state_dict)
-    print("Loaded model from {}".format(args.load_pthpath))
+    logger.info("Loaded model from {}".format(args.load_pthpath))
 
 
 # ================================================================================================
@@ -163,7 +172,7 @@ for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
     else:
         combined_dataloader = itertools.chain(train_dataloader)
         iterations = len(train_dataset) // config["solver"]["batch_size"] + 1
-    print(f"Number of iterations this epoch: {iterations}")
+    logger.info(f"Number of iterations this epoch: {iterations}")
 
     for i, batch in enumerate(combined_dataloader):
         # ----------------------------------------------------------------------------------------
@@ -194,7 +203,7 @@ for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
 
         if i % 100 == 0:
             # print current time, epoch, iteration, running loss, learning rate
-            print("[{}][Epoch: {:3d}][Iter: {:6d}][Loss: {:6f}][lr: {:7f}]".format(
+            logger.info("[{}][Epoch: {:3d}][Iter: {:6d}][Loss: {:6f}][lr: {:7f}]".format(
                     datetime.now() - train_begin, epoch, i,
                     running_loss, optimizer.param_groups[0]["lr"]
                 )
