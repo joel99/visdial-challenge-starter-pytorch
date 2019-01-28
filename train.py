@@ -17,7 +17,7 @@ from visdialch.model import EncoderDecoderModel
 from visdialch.utils import process_ranks, scores_to_ranks, get_gt_ranks
 from visdialch.utils.checkpointing import CheckpointManager, load_checkpoint
 
-import logger
+import logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",
