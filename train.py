@@ -3,6 +3,7 @@ from datetime import datetime
 import itertools
 import os
 
+from tensorboardX import SummaryWriter
 import torch
 from torch import nn, optim
 from torch.optim import lr_scheduler
@@ -13,8 +14,8 @@ import yaml
 from visdialch.data.dataset import VisDialDataset
 from visdialch.encoders import Encoder
 from visdialch.decoders import Decoder
+from visdialch.metrics import SparseGTMetrics, NDCG, scores_to_ranks
 from visdialch.model import EncoderDecoderModel
-from visdialch.utils import process_ranks, scores_to_ranks, get_gt_ranks
 from visdialch.utils.checkpointing import CheckpointManager, load_checkpoint
 
 import logging
@@ -39,6 +40,10 @@ parser.add_argument(
 parser.add_argument(
     "--val-json", default="data/visdial_1.0_val.json",
     help="Path to json file containing VisDial v1.0 validation data."
+)
+parser.add_argument(
+    "--val-dense-json", default="data/visdial_1.0_val_dense_annotations.json",
+    help="Path to json file containing VisDial v1.0 validation dense ground truth annotations."
 )
 
 
@@ -101,15 +106,19 @@ for arg in vars(args):
 
 
 # ================================================================================================
-#   SETUP DATASET, DATALOADER, MODEL, CRITERION, OPTIMIZER, CHECKPOINT MANAGER
+#   SETUP DATASET, DATALOADER, MODEL, CRITERION, OPTIMIZER
 # ================================================================================================
 
-train_dataset = VisDialDataset(args.train_json, config["dataset"], args.overfit, args.in_memory)
+train_dataset = VisDialDataset(
+    config["dataset"], args.train_json, overfit=args.overfit, in_memory=args.in_memory
+)
 train_dataloader = DataLoader(
     train_dataset, batch_size=config["solver"]["batch_size"], num_workers=args.cpu_workers
 )
 
-val_dataset = VisDialDataset(args.val_json, config["dataset"], args.overfit, args.in_memory)
+val_dataset = VisDialDataset(
+    config["dataset"], args.val_json, args.val_dense_json, overfit=args.overfit, in_memory=args.in_memory
+)
 val_dataloader = DataLoader(
     val_dataset, batch_size=config["solver"]["batch_size"], num_workers=args.cpu_workers
 )
@@ -132,12 +141,15 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=config["solver"]["initial_lr"])
 scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=config["solver"]["lr_gamma"])
 
-checkpoint_manager = CheckpointManager(model, optimizer, args.save_dirpath, config=config)
-
 
 # ================================================================================================
 #   SETUP BEFORE TRAINING LOOP
 # ================================================================================================
+
+summary_writer = SummaryWriter(log_dir=args.save_dirpath)
+checkpoint_manager = CheckpointManager(model, optimizer, args.save_dirpath, config=config)
+sparse_metrics = SparseGTMetrics()
+ndcg = NDCG()
 
 # if loading from checkpoint, adjust start epoch and load parameters
 if args.load_pthpath == "":
@@ -155,12 +167,19 @@ else:
     logger.info("Loaded model from {}".format(args.load_pthpath))
 
 
+if config["solver"]["training_splits"] == "trainval":
+    combined_dataloader = itertools.chain(train_dataloader, val_dataloader)
+    iterations = (len(train_dataset) + len(val_dataset)) // config["solver"]["batch_size"] + 1
+else:
+    combined_dataloader = itertools.chain(train_dataloader)
+    iterations = len(train_dataset) // config["solver"]["batch_size"] + 1
+
 # ================================================================================================
 #   TRAINING LOOP
 # ================================================================================================
 
-running_loss = 0.0
-train_begin = datetime.now()
+# Forever increasing counter keeping track of iterations completed, 
+global_iteration_step = (start_epoch - 1) * iterations
 for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
 
     # --------------------------------------------------------------------------------------------
@@ -173,31 +192,22 @@ for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
         combined_dataloader = itertools.chain(train_dataloader)
         iterations = len(train_dataset) // config["solver"]["batch_size"] + 1
     logger.info(f"Number of iterations this epoch: {iterations}")
-
-    for i, batch in enumerate(combined_dataloader):
+    print(f"\nTraining for epoch {epoch}:")
+    for i, batch in enumerate(tqdm(combined_dataloader)):
         # ----------------------------------------------------------------------------------------
         #   ON ITERATION START  (shift all tensors to "device")
         # ----------------------------------------------------------------------------------------
         for key in batch:
             batch[key] = batch[key].to(device)
 
-        # ----------------------------------------------------------------------------------------
-        #   ITERATION: FORWARD - BACKWARD - STEP
-        # ----------------------------------------------------------------------------------------
         optimizer.zero_grad()
         output = model(batch)
         batch_loss = criterion(output.view(-1, output.size(-1)), batch["ans_ind"].view(-1))
         batch_loss.backward()
         optimizer.step()
 
-        # ----------------------------------------------------------------------------------------
-        #   ON ITERATION END  (running loss, print training progress)
-        # ----------------------------------------------------------------------------------------
-        if running_loss > 0.0:
-            running_loss = 0.95 * running_loss + 0.05 * batch_loss.item()
-        else:
-            running_loss = batch_loss.item()
-
+        summary_writer.add_scalar("train/loss", batch_loss, global_iteration_step)
+        summary_writer.add_scalar("train/lr", optimizer.param_groups[0]["lr"], global_iteration_step)
         if optimizer.param_groups[0]["lr"] > config["solver"]["minimum_lr"]:
             scheduler.step()
 
@@ -208,6 +218,7 @@ for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
                     running_loss, optimizer.param_groups[0]["lr"]
                 )
             )
+        global_iteration_step += 1
 
     # --------------------------------------------------------------------------------------------
     #   ON EPOCH END  (checkpointing and validation)
@@ -216,17 +227,20 @@ for epoch in range(start_epoch, config["solver"]["num_epochs"] + 1):
 
     # validate and report automatic metrics
     if args.validate:
-        print(f"Validation after epoch {epoch}:")
-        all_ranks = []
+        print(f"\nValidation after epoch {epoch}:")
         for i, batch in enumerate(tqdm(val_dataloader)):
             for key in batch:
                 batch[key] = batch[key].to(device)
             with torch.no_grad():
                 output = model(batch)
-                print(output.shape)
-            ranks = scores_to_ranks(output)
-            gt_ranks = get_gt_ranks(ranks, batch["ans_ind"])
-            all_ranks.append(gt_ranks)
-        all_ranks = torch.cat(all_ranks, 0)
-        process_ranks(all_ranks)
+            sparse_metrics.observe(output, batch["ans_ind"])
+            if "gt_relevance" in batch:
+                output = output[torch.arange(output.size(0)), batch["round_id"] - 1, :]
+                ndcg.observe(output, batch["gt_relevance"])
 
+        all_metrics = {}
+        all_metrics.update(sparse_metrics.retrieve(reset=True))
+        all_metrics.update(ndcg.retrieve(reset=True))
+        for metric_name, metric_value in all_metrics.items():
+            print(f"{metric_name}: {metric_value}")
+        summary_writer.add_scalars("metrics", all_metrics, global_iteration_step)
